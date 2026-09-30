@@ -1,6 +1,6 @@
-const CACHE='michi-v020';
-const shell=['./','./index.html','./style.css','./app.mjs','./core.mjs','./manifest.webmanifest','./icon.svg','./icon-192.png','./icon-512.png'];
-self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(c=>c.addAll(shell))));
+const CACHE='michi-v040';
+const shell=['./','./index.html','./style.css','./app.mjs','./core.mjs','./search.mjs','./map.mjs','./map-style.json','./maplibre-gl.js','./maplibre-gl.css','./pmtiles.js','./manifest.webmanifest','./icon.svg','./icon-192.png','./icon-512.png'];
+self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(c=>c.addAll(shell.map(p=>new Request(p,{cache:'reload'})))).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('michi-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
 self.addEventListener('fetch',event=>{
   const url=new URL(event.request.url);

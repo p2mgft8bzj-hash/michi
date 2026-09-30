@@ -13,7 +13,18 @@ export function bearing(a,b) {
 }
 export const validPoint = p => Array.isArray(p) && p.length===2 && p.every(Number.isFinite) && Math.abs(p[0])<=90 && Math.abs(p[1])<=180;
 export const formatDistance = m => m < 1000 ? Math.round(m)+' m' : (m/1000).toFixed(1)+' km';
+export function searchAreas(origin,radius,random=Math.random){
+  if(radius<=1200)return [{point:origin,radius}];
+  const step=radius*.65/6371000,lat=origin[0]*rad,lon=origin[1]*rad,start=random()*Math.PI*2;
+  return [0,1,2].map(i=>{
+    const direction=start+i*2*Math.PI/3;
+    const nextLat=Math.asin(Math.sin(lat)*Math.cos(step)+Math.cos(lat)*Math.sin(step)*Math.cos(direction));
+    const nextLon=lon+Math.atan2(Math.sin(direction)*Math.sin(step)*Math.cos(lat),Math.cos(step)-Math.sin(lat)*Math.sin(nextLat));
+    return {point:[nextLat/rad,((nextLon/rad+180)%360+360)%360-180],radius:Math.min(600,radius*.3)};
+  });
+}
 const filters = {
+  'おまかせ': ['["amenity"~"^(cafe|place_of_worship|library)$"]','["leisure"~"^(park|garden)$"]','["historic"~"^(monument|memorial)$"]','["tourism"~"^(viewpoint|artwork)$"]'],
   'ひと息': ['["amenity"="cafe"]','["leisure"="park"]','["leisure"="garden"]'],
   '街の発見': ['["historic"~"^(monument|memorial)$"]','["amenity"="place_of_worship"]','["amenity"="library"]'],
   '緑を歩く': ['["leisure"="park"]','["leisure"="garden"]'],
@@ -21,9 +32,17 @@ const filters = {
 };
 export function query(genre,point,radius) {
   if(!validPoint(point)||!Number.isFinite(radius)||radius<200||radius>5000) throw Error('検索範囲が不正です');
-  const selected=genre==='おまかせ'?[...new Set(Object.values(filters).flat())]:filters[genre];
+  const selected=filters[genre];
   if(!selected) throw Error('ジャンルが不正です');
-  return '[out:json][timeout:20];('+selected.map(f=>'nwr'+f+'[name]["access"!~"^(private|no|customers|permit)$"]["foot"!~"^(private|no)$"](around:'+radius+','+point.join(',')+');').join('')+');out center tags;';
+  // Bounding-box spatial lookup avoids repeating expensive circular geometry checks.
+  // Client-side geodesic filtering still enforces the exact requested radius.
+  const angular=radius/6371000,dLat=angular/rad;
+  const dLon=Math.abs(point[0])+dLat>=90?180:Math.asin(Math.min(1,Math.sin(angular)/Math.cos(point[0]*rad)))/rad;
+  const south=Math.max(-90,point[0]-dLat),north=Math.min(90,point[0]+dLat);
+  const wrap=x=>((x+180)%360+360)%360-180;
+  const west=dLon===180?-180:wrap(point[1]-dLon),east=dLon===180?180:wrap(point[1]+dLon);
+  const box=[south,west,north,east].join(',');
+  return '[out:json][timeout:20][bbox:'+box+'];('+selected.map(f=>'nwr'+f+'[name]["access"!~"^(private|no|customers|permit)$"]["foot"!~"^(private|no)$"];').join('')+');out center tags;';
 }
 export function candidates(elements,origin,radius,visited=[],skipped=[]) {
   const seen=new Set();
